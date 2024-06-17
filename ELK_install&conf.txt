@@ -1,0 +1,112 @@
+
+
+# fluentd/Dockerfile
+FROM fluent/fluentd:v1.12.0-debian-1.0
+USER root
+RUN gem install elasticsearch -v 7.13.3
+RUN ["gem", "install", "excon", "--no-document", "--version", "0.109.0"]
+RUN ["gem", "install", "fluent-plugin-elasticsearch", "--no-document", "--version", "5.0.3"]
+USER fluent
+-----------------------------------------------------------------------------------------------------
+sysctl -w vm.max_map_count=262144
+echo "vm.max_map_count=262144" >>/etc/sysctl.conf
+------------------------------------------------------------------------------------------------------+
+#fluentd/conf/fluent.conf
+<source>
+    @type syslog
+    port 5140
+    tag nginx.access
+</source>
+
+<filter nginx.access**>
+  @type parser
+  key_name message
+  <parse>
+    @type json
+    json_parser yajl
+  </parse>
+</filter>
+
+<match nginx.access**>
+      @type elasticsearch
+      host 192.168.6.121
+      port 9200
+      request_timeout 60s
+      logstash_format true
+      logstash_dateformat %Y%m%d
+      logstash_prefix nginx_access
+      index_name nginx_access
+</match>
+------------------------------------------------------------------------------------------------------------
+#log_format
+log_format json_log escape=json '{"connection_serial_number":$connection,'
+                                                                         '"number_of_requests":$connection_requests,'
+                                                                         '"response_status":"$status",'
+                                                                         '"body_bytes_sent":$body_bytes_sent,'
+                                                                         '"content_type":"$content_type",'
+                                                                         '"host":"$host",'
+                                                                         '"host_name":"$hostname",'
+                                                                         '"http_name":"$http_name",'
+                                                                         '"https":"$https",'
+                                                                         '"proxy_protocol_addr":"$proxy_protocol_addr",'
+                                                                         '"proxy_protocol_port":"$proxy_protocol_port",'
+                                                                         '"query_string":"$query_string",'
+                                                                         '"client_address":"$remote_addr",'
+                                                                         '"http_ar_real_proto":"$http_ar_real_proto",'
+                                                                         '"http_ar_real_ip":"$http_ar_real_ip",'
+                                                                         '"http_ar_real_country":"$http_ar_real_country",'
+                                                                         '"http_x_real_ip":"$http_x_real_ip",'
+                                                                         '"http_x_forwarded_for":"$http_x_forwarded_for",'
+                                                                         '"http_config":"$http_config",'
+                                                                         '"client_port":"$remote_port",'
+                                                                         '"remote_user":"$remote_user",'
+                                                                         '"request":"$request",'
+                                                                         '"request_time":$request_time,'
+                                                                         '"request_id":"$request_id",'
+                                                                         '"request_length":$request_length,'
+                                                                         '"request_method":"$request_method",'
+                                                                         '"request_uri":"$request_uri",'
+                                                                         '"request_body":"$request_body",'
+                                                                         '"scheme":"$scheme",'
+                                                                         '"server_addr":"$server_addr",'
+                                                                         '"server_name":"$server_name",'
+                                                                         '"server_port":"$server_port",'
+                                                                         '"server_protocol":"$server_protocol",'
+                                                                         '"http_user_agent":"$http_user_agent",'
+                                                                         '"time_local":"$time_local",'
+                                                                         '"time_iso":"$time_iso8601",'
+                                                                         '"url":"$scheme://$host$request_uri",'
+                                                                         '"uri":"$uri"}';
+																		 
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+Rsyslog Scenario
+Client side :
+
+Send your log to fluentd vim /etc/rsyslog.conf
+
+*.*  @192.168.6.121:2540
+
+Server Side :
+
+1540 is the port that you should send data
+
+<source>
+ @type syslog
+ port 1540
+ tag syslognew
+</source>
+
+<match syslognew**>
+  @type elasticsearch
+  host 192.168.6.121
+  port 9200
+  logstash_format true
+  logstash_prefix syslog
+  logstash_dateformat %Y%m%d
+  include_tag_key true
+  index_name syslog
+  tag_key @log_name
+  flush_interval 1s
+</match>
+
